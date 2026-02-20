@@ -23,14 +23,6 @@ type PixelArtControlsProps = {
   onEdgeThresholdChange: (value: number) => void;
 };
 
-export type PaletteStylePreset =
-  | "natural"
-  | "portrait"
-  | "vibrant"
-  | "muted"
-  | "pico8"
-  | "gameboy";
-
 const controlLabelClass = "mb-1 block font-pixel text-xs uppercase tracking-wide text-cyan-100";
 const fieldClass =
   "w-full appearance-none rounded-md border-2 border-crt-line bg-crt-bg px-3 py-2 text-2xl text-slate-100 outline-none transition focus:border-crt-glow disabled:cursor-not-allowed disabled:opacity-60";
