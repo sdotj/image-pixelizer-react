@@ -1,6 +1,6 @@
 # Image Pixelizer (React)
 
-A browser-based pixel-art generator that transforms uploaded images into retro-style output with adjustable grid size, palette depth, dithering, and outlines.
+A browser-based pixel-art generator that transforms uploaded images into stylized retro output with adjustable grid size, palette logic, dithering, outlines, compare tools, and export options.
 
 Built with React + TypeScript + Vite, with image processing offloaded to a Web Worker so the UI stays responsive while generating.
 
@@ -20,10 +20,15 @@ The result is more intentional, game-art style output rather than simple blur-to
 
 - Upload PNG/JPG/WEBP and preview immediately
 - Adjustable pixel grid (`100` or `250` max dimension)
-- Palette size control (`2` to `24` colors)
+- Palette size control (`2` to `24` colors) in `Auto` mode
+- Style presets: `Portrait Warm`, `Retro Comic`, `Pico-8`, `NES`, `GameBoy`, `Muted Pastel`
+- `Polished Portrait` mode for cleaner portrait-focused output
 - Dither strength control (`0.00` to `0.35`)
+- Palette smoothing toggle (duplicate merge + ramp shaping + conservative cleanup)
 - Edge outlining toggle + threshold slider
-- One-click reset back to original preview
+- Before/after compare slider on canvas output
+- Export PNG at `1x`, `2x`, `4x`, or `8x`
+- Shareable preset URLs via query parameters
 - One-click clear state/canvas
 - All processing runs client-side in a worker (no backend required)
 
@@ -72,12 +77,17 @@ The core pipeline lives in `src/workers/palette.worker.ts`:
 
 1. Fit source image within a processing grid (`gridMax`) while preserving aspect ratio.
 2. Downscale with bilinear filtering to produce a compact "analysis" image.
-3. Build a reduced palette via median-cut quantization.
-4. Convert palette and candidate pixels to LAB color space.
-5. Match each pixel to nearest palette color using Delta E 2000 distance.
-6. Optionally apply subtle 4x4 Bayer ordered dithering before palette lookup.
-7. Optionally run an outline pass using neighbor changes + luminance contrast threshold.
-8. Upscale to output canvas with nearest-neighbor scaling for clean hard edges.
+3. Optionally run edge-aware portrait prefiltering (`Polished Portrait` mode).
+4. Build a palette from either:
+   - image-derived median-cut quantization (`Auto`)
+   - fixed style preset palette
+5. Optionally smooth palette ramps (merge near-duplicates + enforce light/dark progression).
+6. Convert palette and candidate pixels to LAB color space.
+7. Match each pixel to nearest palette color using Delta E 2000 distance.
+8. Optionally apply subtle 4x4 Bayer ordered dithering before palette lookup.
+9. Optionally run conservative local cleanup for noisy speckles.
+10. Optionally run outlines (standard or selective portrait outlines).
+11. Upscale to output canvas with nearest-neighbor scaling for clean hard edges.
 
 Worker messaging is typed in `src/workers/messages.ts`, and integration is handled by `src/hooks/usePixelArtWorker.ts`.
 
@@ -85,13 +95,33 @@ Worker messaging is typed in `src/workers/messages.ts`, and integration is handl
 
 - `Grid`: Maximum dimension used during pixelization.  
   Lower values = chunkier look, faster processing.
-- `Palette`: Number of retained colors.  
+- `Style Preset`: Switches between image-derived color extraction and fixed palettes.
+- `Palette`: Number of retained colors (only active in `Auto` preset).  
   Lower values = more stylized/limited color feel.
+- `Palette Smoothing`: Reduces near-duplicate colors and encourages cleaner tonal ramps.
+- `Polished Portrait`: Applies portrait-oriented cleanup (edge-aware smoothing + selective outlining).
 - `Dither`: Adds patterned noise before quantization.  
   Helps smooth gradients but can add texture/grain.
 - `Enable Edges`: Turns outline pass on/off.
 - `Edge Threshold`: Minimum luminance contrast required to draw an outline.  
   Higher values = fewer, more selective outlines.
+- `Export Scale`: Chooses PNG export resolution multiplier.
+- `Compare / Split`: Overlay original image against processed output with a draggable split percentage.
+
+## Shareable URLs
+
+Control state is synced to URL query params, so settings can be copied/shared directly.
+
+Current params:
+
+- `gm`: grid max (`100` or `250`)
+- `ps`: palette size
+- `pp`: palette preset key
+- `sm`: palette smoothing (`1`/`0`)
+- `po`: polished portrait (`1`/`0`)
+- `di`: dither strength
+- `ee`: edge enabled (`1`/`0`)
+- `et`: edge threshold
 
 ## Project structure
 
@@ -119,17 +149,16 @@ src/
 ## Current limitations
 
 - No drag-and-drop yet (file picker only)
-- No export/download button yet
-- No preset palette themes wired into the UI yet
+- No crop/selection tool yet
+- No alpha-background replacement workflow yet
 - No batch processing
 
 ## Ideas for next iteration
 
-- Export as PNG (with optional upscale factor)
-- Side-by-side original vs processed preview
 - Custom palette import / named preset palettes
 - Toggle between ordered dithering and error-diffusion dithering
-- Save/share parameter presets
+- One-click copy-share link button
+- Golden image tests for worker output stability
 
 ## License
 

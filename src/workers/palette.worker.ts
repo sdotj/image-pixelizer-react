@@ -1,4 +1,5 @@
 import type {
+  PaletteStylePreset,
   ProcessPixelArtDoneMessage,
   ProcessPixelArtRequest,
   RGB,
@@ -16,6 +17,91 @@ function fitWithin(srcW: number, srcH: number, max: number) {
   const h = Math.max(1, Math.round(srcH * scale));
   return { w, h };
 }
+
+const PRESET_PALETTES: Record<Exclude<PaletteStylePreset, "auto">, RGB[]> = {
+  portrait_warm: [
+    { r: 255, g: 234, b: 210 },
+    { r: 248, g: 206, b: 174 },
+    { r: 231, g: 175, b: 145 },
+    { r: 212, g: 145, b: 118 },
+    { r: 184, g: 113, b: 96 },
+    { r: 146, g: 84, b: 72 },
+    { r: 113, g: 62, b: 58 },
+    { r: 82, g: 46, b: 50 },
+    { r: 58, g: 33, b: 38 },
+    { r: 37, g: 24, b: 30 },
+  ],
+  retro_comic: [
+    { r: 255, g: 244, b: 219 },
+    { r: 255, g: 210, b: 74 },
+    { r: 255, g: 129, b: 65 },
+    { r: 233, g: 62, b: 89 },
+    { r: 162, g: 54, b: 129 },
+    { r: 82, g: 64, b: 189 },
+    { r: 45, g: 134, b: 196 },
+    { r: 64, g: 200, b: 162 },
+    { r: 104, g: 207, b: 98 },
+    { r: 31, g: 38, b: 56 },
+    { r: 94, g: 104, b: 124 },
+    { r: 228, g: 235, b: 245 },
+  ],
+  pico8: [
+    { r: 0, g: 0, b: 0 },
+    { r: 29, g: 43, b: 83 },
+    { r: 126, g: 37, b: 83 },
+    { r: 0, g: 135, b: 81 },
+    { r: 171, g: 82, b: 54 },
+    { r: 95, g: 87, b: 79 },
+    { r: 194, g: 195, b: 199 },
+    { r: 255, g: 241, b: 232 },
+    { r: 255, g: 0, b: 77 },
+    { r: 255, g: 163, b: 0 },
+    { r: 255, g: 236, b: 39 },
+    { r: 0, g: 228, b: 54 },
+    { r: 41, g: 173, b: 255 },
+    { r: 131, g: 118, b: 156 },
+    { r: 255, g: 119, b: 168 },
+    { r: 255, g: 204, b: 170 },
+  ],
+  nes: [
+    { r: 124, g: 124, b: 124 },
+    { r: 0, g: 0, b: 252 },
+    { r: 0, g: 0, b: 188 },
+    { r: 68, g: 40, b: 188 },
+    { r: 148, g: 0, b: 132 },
+    { r: 168, g: 0, b: 32 },
+    { r: 168, g: 16, b: 0 },
+    { r: 136, g: 20, b: 0 },
+    { r: 80, g: 48, b: 0 },
+    { r: 0, g: 120, b: 0 },
+    { r: 0, g: 104, b: 0 },
+    { r: 0, g: 88, b: 0 },
+    { r: 0, g: 64, b: 88 },
+    { r: 0, g: 0, b: 0 },
+    { r: 188, g: 188, b: 188 },
+    { r: 248, g: 248, b: 248 },
+  ],
+  gameboy: [
+    { r: 15, g: 56, b: 15 },
+    { r: 48, g: 98, b: 48 },
+    { r: 139, g: 172, b: 15 },
+    { r: 155, g: 188, b: 15 },
+  ],
+  muted_pastel: [
+    { r: 244, g: 232, b: 226 },
+    { r: 228, g: 205, b: 200 },
+    { r: 214, g: 187, b: 202 },
+    { r: 196, g: 186, b: 222 },
+    { r: 182, g: 197, b: 230 },
+    { r: 178, g: 211, b: 214 },
+    { r: 188, g: 216, b: 188 },
+    { r: 212, g: 219, b: 176 },
+    { r: 232, g: 214, b: 170 },
+    { r: 211, g: 181, b: 168 },
+    { r: 162, g: 150, b: 160 },
+    { r: 114, g: 110, b: 124 },
+  ],
+};
 
 // Bilinear downscale from src -> dst
 function resizeBilinearRGBA(
@@ -85,6 +171,84 @@ function upscaleNearestRGBA(
       out[di + 1] = src[si + 1];
       out[di + 2] = src[si + 2];
       out[di + 3] = src[si + 3];
+    }
+  }
+
+  return out;
+}
+
+function edgeAwarePrefilterRGBA(
+  src: Uint8ClampedArray,
+  w: number,
+  h: number
+): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(src.length);
+  const kernel = [
+    1, 2, 1,
+    2, 4, 2,
+    1, 2, 1,
+  ];
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const a = src[i + 3];
+      out[i + 3] = a;
+      if (a < 10) continue;
+
+      const cR = src[i];
+      const cG = src[i + 1];
+      const cB = src[i + 2];
+      const cLum = (0.2126 * cR + 0.7152 * cG + 0.0722 * cB) / 255;
+
+      let sumR = 0;
+      let sumG = 0;
+      let sumB = 0;
+      let sumW = 0;
+      let k = 0;
+
+      for (let oy = -1; oy <= 1; oy++) {
+        const sy = Math.max(0, Math.min(h - 1, y + oy));
+        for (let ox = -1; ox <= 1; ox++) {
+          const sx = Math.max(0, Math.min(w - 1, x + ox));
+          const si = (sy * w + sx) * 4;
+          const sa = src[si + 3];
+          const spatialW = kernel[k++];
+          if (sa < 10) continue;
+
+          const r = src[si];
+          const g = src[si + 1];
+          const b = src[si + 2];
+          const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+          const lumDiff = Math.abs(cLum - lum);
+          const rgbDiff = Math.abs(cR - r) + Math.abs(cG - g) + Math.abs(cB - b);
+
+          // Keep blending inside tonal regions, reject cross-edge mixing.
+          if (lumDiff > 0.15 || rgbDiff > 95) continue;
+
+          const rangeW = 1 - lumDiff / 0.15;
+          const wAll = spatialW * rangeW;
+          sumR += r * wAll;
+          sumG += g * wAll;
+          sumB += b * wAll;
+          sumW += wAll;
+        }
+      }
+
+      if (sumW <= 0.0001) {
+        out[i] = cR;
+        out[i + 1] = cG;
+        out[i + 2] = cB;
+        continue;
+      }
+
+      // Keep prefilter conservative: only partial blend toward local smooth estimate.
+      const avgR = sumR / sumW;
+      const avgG = sumG / sumW;
+      const avgB = sumB / sumW;
+      out[i] = clamp255(cR * 0.55 + avgR * 0.45);
+      out[i + 1] = clamp255(cG * 0.55 + avgG * 0.45);
+      out[i + 2] = clamp255(cB * 0.55 + avgB * 0.45);
     }
   }
 
@@ -301,6 +465,247 @@ function nearestPaletteIndex(c: RGB, paletteLab: PaletteLabEntry[]): number {
   return bestI;
 }
 
+function blendRgb(a: RGB, b: RGB, t: number): RGB {
+  return {
+    r: clamp255(a.r + (b.r - a.r) * t),
+    g: clamp255(a.g + (b.g - a.g) * t),
+    b: clamp255(a.b + (b.b - a.b) * t),
+  };
+}
+
+function samplePaletteRamp(palette: RGB[], targetSize: number): RGB[] {
+  if (palette.length === 0) return [{ r: 0, g: 0, b: 0 }];
+  if (targetSize <= 1) return [palette[0]];
+  if (palette.length === targetSize) return palette.slice();
+
+  const out: RGB[] = [];
+  const maxSrcIndex = palette.length - 1;
+
+  for (let i = 0; i < targetSize; i++) {
+    const pos = (i * maxSrcIndex) / (targetSize - 1);
+    const i0 = Math.floor(pos);
+    const i1 = Math.min(maxSrcIndex, i0 + 1);
+    const t = pos - i0;
+    out.push(blendRgb(palette[i0], palette[i1], t));
+  }
+
+  return out;
+}
+
+function mergeNearDuplicateColors(palette: RGB[], thresholdDE = 6): RGB[] {
+  type Cluster = { sumR: number; sumG: number; sumB: number; count: number; lab: Lab };
+  const clusters: Cluster[] = [];
+
+  for (const color of palette) {
+    const lab = rgbToLab(color);
+    let bestIndex = -1;
+    let bestDistance = Infinity;
+
+    for (let i = 0; i < clusters.length; i++) {
+      const d = deltaE00(lab, clusters[i].lab);
+      if (d < bestDistance) {
+        bestDistance = d;
+        bestIndex = i;
+      }
+    }
+
+    if (bestIndex >= 0 && bestDistance <= thresholdDE) {
+      const cluster = clusters[bestIndex];
+      cluster.sumR += color.r;
+      cluster.sumG += color.g;
+      cluster.sumB += color.b;
+      cluster.count += 1;
+
+      const avg: RGB = {
+        r: Math.round(cluster.sumR / cluster.count),
+        g: Math.round(cluster.sumG / cluster.count),
+        b: Math.round(cluster.sumB / cluster.count),
+      };
+      cluster.lab = rgbToLab(avg);
+      continue;
+    }
+
+    clusters.push({
+      sumR: color.r,
+      sumG: color.g,
+      sumB: color.b,
+      count: 1,
+      lab,
+    });
+  }
+
+  return clusters.map((cluster) => ({
+    r: Math.round(cluster.sumR / cluster.count),
+    g: Math.round(cluster.sumG / cluster.count),
+    b: Math.round(cluster.sumB / cluster.count),
+  }));
+}
+
+function withTargetLuminance(color: RGB, targetLuminance01: number): RGB {
+  const current = Math.max(0.001, luminance(color));
+  const scale = targetLuminance01 / current;
+  return {
+    r: clamp255(color.r * scale),
+    g: clamp255(color.g * scale),
+    b: clamp255(color.b * scale),
+  };
+}
+
+function enforceLightToDarkRamp(palette: RGB[]): RGB[] {
+  if (palette.length <= 2) return palette.slice().sort((a, b) => luminance(a) - luminance(b));
+
+  const sorted = palette.slice().sort((a, b) => luminance(a) - luminance(b));
+  const low = luminance(sorted[0]);
+  const high = Math.max(luminance(sorted[sorted.length - 1]), low + 0.35);
+  const span = Math.max(0.2, high - low);
+
+  return sorted.map((color, index) => {
+    const t = index / (sorted.length - 1);
+    const targetL = Math.min(1, low + span * t);
+    const adjusted = withTargetLuminance(color, targetL);
+    return blendRgb(color, adjusted, 0.55);
+  });
+}
+
+function buildPaletteFromPreset(preset: PaletteStylePreset): RGB[] {
+  if (preset === "auto") return [];
+  return PRESET_PALETTES[preset].slice();
+}
+
+function buildPalette(req: ProcessPixelArtRequest, small: Uint8ClampedArray, w: number, h: number): RGB[] {
+  const basePalette =
+    req.palettePreset === "auto"
+      ? medianCutPalette(small, w, h, req.paletteSize)
+      : buildPaletteFromPreset(req.palettePreset);
+
+  if (!req.paletteSmoothing) return basePalette;
+
+  const merged = mergeNearDuplicateColors(basePalette, 6);
+  const ramped = enforceLightToDarkRamp(merged);
+  const targetSize = req.palettePreset === "auto" ? req.paletteSize : basePalette.length;
+  return samplePaletteRamp(ramped, targetSize);
+}
+
+function clampInt(x: number, min: number, max: number) {
+  return x < min ? min : x > max ? max : x;
+}
+
+function paintIndexedPixels(
+  outSmall: Uint8ClampedArray,
+  idx: Uint8Array,
+  palette: RGB[],
+  w: number,
+  h: number
+) {
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const a = outSmall[i + 3];
+      if (a < 10) continue;
+      const p = palette[idx[y * w + x]];
+      outSmall[i] = p.r;
+      outSmall[i + 1] = p.g;
+      outSmall[i + 2] = p.b;
+    }
+  }
+}
+
+function conservativeSmoothIndices(
+  idx: Uint8Array,
+  palette: RGB[],
+  paletteLab: PaletteLabEntry[],
+  w: number,
+  h: number,
+  edgeThreshold: number
+): Uint8Array<ArrayBuffer> {
+  if (w < 3 || h < 3 || palette.length < 2) {
+    const passthrough = new Uint8Array(idx.length);
+    passthrough.set(idx);
+    return passthrough;
+  }
+
+  const sortedByL = palette
+    .map((c, i) => ({ i, L: luminance(c) }))
+    .sort((a, b) => a.L - b.L);
+  const rankToIndex = new Uint8Array(sortedByL.length);
+  const indexToRank = new Uint8Array(sortedByL.length);
+  for (let r = 0; r < sortedByL.length; r++) {
+    rankToIndex[r] = sortedByL[r].i;
+    indexToRank[sortedByL[r].i] = r;
+  }
+
+  const out = new Uint8Array(idx.length);
+  out.set(idx);
+  const preserveContrast = Math.max(0.12, edgeThreshold * 0.75);
+  const neighbors = new Uint8Array(8);
+  const counts = new Uint8Array(256);
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      const center = idx[i];
+      const centerLum = luminance(palette[center]);
+
+      neighbors[0] = idx[i - w - 1];
+      neighbors[1] = idx[i - w];
+      neighbors[2] = idx[i - w + 1];
+      neighbors[3] = idx[i - 1];
+      neighbors[4] = idx[i + 1];
+      neighbors[5] = idx[i + w - 1];
+      neighbors[6] = idx[i + w];
+      neighbors[7] = idx[i + w + 1];
+
+      let maxContrast = 0;
+      let rankSum = 0;
+      for (let n = 0; n < 8; n++) {
+        const ni = neighbors[n];
+        const d = Math.abs(centerLum - luminance(palette[ni]));
+        if (d > maxContrast) maxContrast = d;
+        rankSum += indexToRank[ni];
+      }
+      if (maxContrast >= preserveContrast) continue;
+
+      counts.fill(0);
+      let modeIndex = center;
+      let modeCount = 0;
+      for (let n = 0; n < 8; n++) {
+        const ni = neighbors[n];
+        const next = counts[ni] + 1;
+        counts[ni] = next;
+        if (next > modeCount) {
+          modeCount = next;
+          modeIndex = ni;
+        }
+      }
+
+      // Only fix obvious speckles: center differs, surrounded heavily by one tone.
+      if (modeIndex !== center && modeCount >= 6) {
+        const d = deltaE00(paletteLab[center].lab, paletteLab[modeIndex].lab);
+        if (d <= 12) {
+          out[i] = modeIndex;
+          continue;
+        }
+      }
+
+      // Tiny ramp correction: allow at most a one-rank shift toward neighborhood average.
+      const avgRank = Math.round(rankSum / 8);
+      const centerRank = indexToRank[center];
+      if (Math.abs(avgRank - centerRank) <= 1 || rankToIndex.length < 3) continue;
+
+      const targetRank = clampInt(
+        centerRank + (avgRank > centerRank ? 1 : -1),
+        0,
+        rankToIndex.length - 1
+      );
+      const targetIndex = rankToIndex[targetRank];
+      const d = deltaE00(paletteLab[center].lab, paletteLab[targetIndex].lab);
+      if (d <= 8) out[i] = targetIndex;
+    }
+  }
+
+  return out;
+}
+
 // --------------------- Ordered dithering (subtle) ---------------------
 
 // 4x4 Bayer matrix values 0..15
@@ -384,6 +789,88 @@ function applyOutlines(
   return out;
 }
 
+function cleanupTinyIslands(idx: Uint8Array, paletteLab: PaletteLabEntry[], w: number, h: number) {
+  const out = new Uint8Array(idx.length);
+  out.set(idx);
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      const center = idx[i];
+
+      const n = idx[i - w];
+      const s = idx[i + w];
+      const e = idx[i + 1];
+      const wv = idx[i - 1];
+
+      // Cross-neighbor majority indicates center is a tiny island.
+      let mode = center;
+      let modeCount = 0;
+      const candidates = [n, s, e, wv];
+      for (let ci = 0; ci < candidates.length; ci++) {
+        const c = candidates[ci];
+        let count = 1;
+        for (let cj = ci + 1; cj < candidates.length; cj++) {
+          if (candidates[cj] === c) count++;
+        }
+        if (count > modeCount) {
+          mode = c;
+          modeCount = count;
+        }
+      }
+
+      if (mode !== center && modeCount >= 3) {
+        const d = deltaE00(paletteLab[center].lab, paletteLab[mode].lab);
+        if (d <= 16) out[i] = mode;
+      }
+    }
+  }
+
+  return out;
+}
+
+function applySelectiveOutlines(
+  idx: Uint8Array,
+  palette: RGB[],
+  w: number,
+  h: number,
+  threshold01: number
+) {
+  const stricterThreshold = Math.max(0.3, threshold01 + 0.08);
+  const out = idx.slice();
+  const outline = darkestPaletteColor(palette);
+
+  let outlineIndex = palette.findIndex(
+    (c) => c.r === outline.r && c.g === outline.g && c.b === outline.b
+  );
+  if (outlineIndex < 0) outlineIndex = 0;
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      const here = idx[i];
+      const neighbors = [idx[i - w], idx[i + w], idx[i - 1], idx[i + 1]];
+
+      let diffCount = 0;
+      for (let ni = 0; ni < neighbors.length; ni++) {
+        if (neighbors[ni] !== here) diffCount++;
+      }
+      if (diffCount < 2) continue;
+
+      const Lh = luminance(palette[here]);
+      let maxContrast = 0;
+      for (let ni = 0; ni < neighbors.length; ni++) {
+        const d = Math.abs(Lh - luminance(palette[neighbors[ni]]));
+        if (d > maxContrast) maxContrast = d;
+      }
+
+      if (maxContrast >= stricterThreshold) out[i] = outlineIndex;
+    }
+  }
+
+  return out;
+}
+
 // --------------------- main pipeline ---------------------
 
 function processPixelArt(req: ProcessPixelArtRequest): ProcessPixelArtDoneMessage {
@@ -392,9 +879,10 @@ function processPixelArt(req: ProcessPixelArtRequest): ProcessPixelArtDoneMessag
   // 1) downscale to grid (fit within NxN)
   const grid = fitWithin(req.srcWidth, req.srcHeight, req.gridMax);
   const small = resizeBilinearRGBA(src, req.srcWidth, req.srcHeight, grid.w, grid.h);
+  const prepared = req.polishedPortrait ? edgeAwarePrefilterRGBA(small, grid.w, grid.h) : small;
 
-  // 2) generate palette from the small image (cleaner than sampling)
-  const palette = medianCutPalette(small, grid.w, grid.h, req.paletteSize);
+  // 2) generate palette from image or fixed preset
+  const palette = buildPalette(req, prepared, grid.w, grid.h);
   const paletteLab = buildPaletteLab(palette);
 
   // 3) quantize small image to palette indices (with optional ordered dithering)
@@ -404,7 +892,7 @@ function processPixelArt(req: ProcessPixelArtRequest): ProcessPixelArtDoneMessag
   for (let y = 0; y < grid.h; y++) {
     for (let x = 0; x < grid.w; x++) {
       const i = (y * grid.w + x) * 4;
-      const a = small[i + 3];
+      const a = prepared[i + 3];
       outSmall[i + 3] = a;
 
       if (a < 10) {
@@ -416,12 +904,13 @@ function processPixelArt(req: ProcessPixelArtRequest): ProcessPixelArtDoneMessag
       }
 
       // subtle ordered dithering nudges RGB before lookup
-      const n = req.ditherStrength > 0 ? ditherNudge(x, y, req.ditherStrength) : 0;
+      const ditherStrength = req.polishedPortrait ? req.ditherStrength * 0.7 : req.ditherStrength;
+      const n = ditherStrength > 0 ? ditherNudge(x, y, ditherStrength) : 0;
 
       const c: RGB = {
-        r: clamp255(small[i] + n),
-        g: clamp255(small[i + 1] + n),
-        b: clamp255(small[i + 2] + n),
+        r: clamp255(prepared[i] + n),
+        g: clamp255(prepared[i + 1] + n),
+        b: clamp255(prepared[i + 2] + n),
       };
 
       const pi = nearestPaletteIndex(c, paletteLab);
@@ -434,25 +923,35 @@ function processPixelArt(req: ProcessPixelArtRequest): ProcessPixelArtDoneMessag
     }
   }
 
-  // 4) outline pass (on indices), then write colors back if enabled
+  // 4) optional conservative smoothing to clean noisy speckles
   let finalIdx = idx;
-  if (req.edgeEnabled) {
-    finalIdx = applyOutlines(idx, palette, grid.w, grid.h, req.edgeThreshold);
-    for (let y = 0; y < grid.h; y++) {
-      for (let x = 0; x < grid.w; x++) {
-        const pi = finalIdx[y * grid.w + x];
-        const i = (y * grid.w + x) * 4;
-        const a = outSmall[i + 3];
-        if (a < 10) continue;
-        const p = palette[pi];
-        outSmall[i] = p.r;
-        outSmall[i + 1] = p.g;
-        outSmall[i + 2] = p.b;
-      }
-    }
+  if (req.paletteSmoothing) {
+    finalIdx = conservativeSmoothIndices(
+      finalIdx,
+      palette,
+      paletteLab,
+      grid.w,
+      grid.h,
+      req.edgeThreshold
+    );
+    paintIndexedPixels(outSmall, finalIdx, palette, grid.w, grid.h);
   }
 
-  // 5) upscale to output size (nearest neighbor for crisp pixels)
+  // 5) portrait mode cleanup for micro-islands after smoothing/quantization
+  if (req.polishedPortrait) {
+    finalIdx = cleanupTinyIslands(finalIdx, paletteLab, grid.w, grid.h);
+    paintIndexedPixels(outSmall, finalIdx, palette, grid.w, grid.h);
+  }
+
+  // 6) outline pass (on indices), then write colors back if enabled
+  if (req.edgeEnabled) {
+    finalIdx = req.polishedPortrait
+      ? applySelectiveOutlines(finalIdx, palette, grid.w, grid.h, req.edgeThreshold)
+      : applyOutlines(finalIdx, palette, grid.w, grid.h, req.edgeThreshold);
+    paintIndexedPixels(outSmall, finalIdx, palette, grid.w, grid.h);
+  }
+
+  // 7) upscale to output size (nearest neighbor for crisp pixels)
   const out = upscaleNearestRGBA(outSmall, grid.w, grid.h, req.outWidth, req.outHeight);
 
   return {
