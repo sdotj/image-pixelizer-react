@@ -159,7 +159,3 @@ src/
 - Toggle between ordered dithering and error-diffusion dithering
 - One-click copy-share link button
 - Golden image tests for worker output stability
-
-## License
-
-Add your preferred license here (`MIT`, `Apache-2.0`, etc.).
