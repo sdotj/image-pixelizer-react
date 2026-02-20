@@ -1,3 +1,5 @@
+import type { PaletteStylePreset } from "../workers/messages";
+
 type LoadedImage = {
   img: HTMLImageElement;
   fileName: string;
@@ -9,6 +11,9 @@ type PixelArtControlsProps = {
   processing: boolean;
   gridMax: 100 | 250;
   paletteSize: number;
+  palettePreset: PaletteStylePreset;
+  paletteSmoothing: boolean;
+  polishedPortrait: boolean;
   ditherStrength: number;
   edgeEnabled: boolean;
   edgeThreshold: number;
@@ -18,10 +23,27 @@ type PixelArtControlsProps = {
   onGenerate: () => void;
   onGridMaxChange: (value: 100 | 250) => void;
   onPaletteSizeChange: (value: number) => void;
+  onPalettePresetChange: (value: PaletteStylePreset) => void;
+  onPaletteSmoothingChange: (value: boolean) => void;
+  onPolishedPortraitChange: (value: boolean) => void;
   onDitherStrengthChange: (value: number) => void;
   onEdgeEnabledChange: (value: boolean) => void;
   onEdgeThresholdChange: (value: number) => void;
+  exportScale: 1 | 2 | 4 | 8;
+  hasExportableImage: boolean;
+  onExportScaleChange: (value: 1 | 2 | 4 | 8) => void;
+  onExport: () => void;
 };
+
+const PRESET_OPTIONS: Array<{ value: PaletteStylePreset; label: string }> = [
+  { value: "auto", label: "Auto (Image-Derived)" },
+  { value: "portrait_warm", label: "Portrait Warm" },
+  { value: "retro_comic", label: "Retro Comic" },
+  { value: "pico8", label: "Pico-8" },
+  { value: "nes", label: "NES" },
+  { value: "gameboy", label: "GameBoy" },
+  { value: "muted_pastel", label: "Muted Pastel" },
+];
 
 const controlLabelClass = "mb-1 block font-pixel text-xs uppercase tracking-wide text-cyan-100";
 const fieldClass =
@@ -35,6 +57,9 @@ export default function PixelArtControls({
   processing,
   gridMax,
   paletteSize,
+  palettePreset,
+  paletteSmoothing,
+  polishedPortrait,
   ditherStrength,
   edgeEnabled,
   edgeThreshold,
@@ -44,9 +69,16 @@ export default function PixelArtControls({
   onGenerate,
   onGridMaxChange,
   onPaletteSizeChange,
+  onPalettePresetChange,
+  onPaletteSmoothingChange,
+  onPolishedPortraitChange,
   onDitherStrengthChange,
   onEdgeEnabledChange,
   onEdgeThresholdChange,
+  exportScale,
+  hasExportableImage,
+  onExportScaleChange,
+  onExport,
 }: PixelArtControlsProps) {
   return (
     <div className="rounded-xl border-2 border-crt-line bg-crt-bg/70 p-4 shadow-glow">
@@ -85,6 +117,22 @@ export default function PixelArtControls({
         </div>
 
         <div>
+          <label className={controlLabelClass}>Style Preset</label>
+          <select
+            value={palettePreset}
+            onChange={(e) => onPalettePresetChange(e.target.value as PaletteStylePreset)}
+            disabled={processing || !loaded}
+            className={fieldClass}
+          >
+            {PRESET_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
           <label className={controlLabelClass}>Palette</label>
           <input
             type="number"
@@ -92,7 +140,7 @@ export default function PixelArtControls({
             max={24}
             value={paletteSize}
             onChange={(e) => onPaletteSizeChange(Number(e.target.value))}
-            disabled={processing || !loaded}
+            disabled={processing || !loaded || palettePreset !== "auto"}
             className={fieldClass}
           />
         </div>
@@ -134,6 +182,28 @@ export default function PixelArtControls({
         <label className="flex items-center gap-2 rounded-md border-2 border-crt-line bg-crt-bg px-3 py-2 text-xl text-slate-100">
           <input
             type="checkbox"
+            checked={paletteSmoothing}
+            onChange={(e) => onPaletteSmoothingChange(e.target.checked)}
+            disabled={processing || !loaded}
+            className="h-4 w-4"
+          />
+          <span className="font-pixel text-xs uppercase tracking-wide">Palette Smoothing</span>
+        </label>
+
+        <label className="flex items-center gap-2 rounded-md border-2 border-crt-line bg-crt-bg px-3 py-2 text-xl text-slate-100">
+          <input
+            type="checkbox"
+            checked={polishedPortrait}
+            onChange={(e) => onPolishedPortraitChange(e.target.checked)}
+            disabled={processing || !loaded}
+            className="h-4 w-4"
+          />
+          <span className="font-pixel text-xs uppercase tracking-wide">Polished Portrait</span>
+        </label>
+
+        <label className="flex items-center gap-2 rounded-md border-2 border-crt-line bg-crt-bg px-3 py-2 text-xl text-slate-100">
+          <input
+            type="checkbox"
             checked={edgeEnabled}
             onChange={(e) => onEdgeEnabledChange(e.target.checked)}
             disabled={processing || !loaded}
@@ -156,6 +226,29 @@ export default function PixelArtControls({
           className={`${buttonClass} border-crt-peach text-crt-peach hover:border-crt-mint hover:text-crt-mint`}
         >
           {processing ? "Generating..." : "Generate Pixel Art"}
+        </button>
+
+        <div className="lg:col-span-2">
+          <label className={controlLabelClass}>Export Scale</label>
+          <select
+            value={exportScale}
+            onChange={(e) => onExportScaleChange(Number(e.target.value) as 1 | 2 | 4 | 8)}
+            disabled={processing || !hasExportableImage}
+            className={fieldClass}
+          >
+            <option value={1}>1x</option>
+            <option value={2}>2x</option>
+            <option value={4}>4x</option>
+            <option value={8}>8x</option>
+          </select>
+        </div>
+
+        <button
+          onClick={onExport}
+          disabled={processing || !hasExportableImage}
+          className={`${buttonClass} lg:col-span-2`}
+        >
+          Export PNG
         </button>
       </div>
 
